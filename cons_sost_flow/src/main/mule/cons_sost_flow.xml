@@ -21,7 +21,7 @@ http://www.mulesoft.org/schema/mule/sqs http://www.mulesoft.org/schema/mule/sqs/
 				<fixed-frequency frequency="10" timeUnit="MINUTES"/>
 			</scheduling-strategy>
 		</scheduler>
-		<logger level="INFO" doc:name="START" doc:id="f9939a11-63dc-4022-aac4-4a0b068f450a" message="CONSERVAZIONE SOSTITUTIVA ---- START"/>
+		<logger level="INFO" doc:name="START" doc:id="f9939a11-63dc-4022-aac4-4a0b068f450a" message="CONSERVAZIONE SOSTITUTIVA ---- START----TransactionId #[correlationId]"/>
 		<java:new constructor="Utilities()" doc:id="df12185e-768c-4695-91a8-c11248eac1c3" class="com.nttdata.utils.Utilities" target="utilities" doc:name="Utilities"/>
 		<java:invoke method="deleteAllContentOfDirectory(java.lang.String)" doc:name="Delete content of working dir" doc:id="8a7792f4-af90-4ee2-82b6-eb636785f5b8" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities">
 			<java:args ><![CDATA[#[{
