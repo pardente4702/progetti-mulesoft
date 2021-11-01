@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<types:mule xmlns:types="http://www.mulesoft.org/schema/mule/types">
+  <types:catalog>
+    <types:type name="dms" format="json">
+      <types:shape format="weave" example="examples/dms-1.json"><![CDATA[%dw 2.0
+
+type dms = Array<{|  SHA1: String,   P_IVA: String,   FILENAME: String,   TIPO_FIRMA: String,   NOMINATIVO: String,   JOB_ID: String,   COD_ANNUALITA: String,   IMPORTO: String,   OPEC: String,   COD_FISC: String|}> {"example": "[{\\\"SHA1\\\":\\\"AAAAAAAAAAAA\\\",\\\"P_IVA\\\":\\\"\\\",\\\"FILENAME\\\":\\\"prova2.pdf\\\",\\\"TIPO_FIRMA\\\":\\\"FEA\\\",\\\"NOMINATIVO\\\":\\\"\\\",\\\"JOB_ID\\\":\\\"12344\\\",\\\"COD_ANNUALITA\\\":\\\"B12345678-0\\\",\\\"IMPORTO\\\":\\\"123.45\\\",\\\"OPEC\\\":\\\"h4356b\\\",\\\"COD_FISC\\\":\\\"\\\"},{\\\"SHA1\\\":\\\"AAAAAAAAAAAA\\\",\\\"P_IVA\\\":\\\"\\\",\\\"FILENAME\\\":\\\"prova.pdf\\\",\\\"TIPO_FIRMA\\\":\\\"FEA\\\",\\\"NOMINATIVO\\\":\\\"\\\",\\\"JOB_ID\\\":\\\"12345\\\",\\\"COD_ANNUALITA\\\":\\\"B12345678-0\\\",\\\"IMPORTO\\\":\\\"123.45\\\",\\\"OPEC\\\":\\\"h4356b\\\",\\\"COD_FISC\\\":\\\"\\\"}]"}
+
+]]></types:shape>
+    </types:type>
+  </types:catalog>
+  <types:enrichment select="#783e13e4-5b0b-47f8-8d34-6f91192288c8">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="dms"/>
+        </types:message>
+      </types:input-event>
+      <types:output-event>
+        <types:message>
+          <types:payload type="dms"/>
+        </types:message>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+</types:mule>

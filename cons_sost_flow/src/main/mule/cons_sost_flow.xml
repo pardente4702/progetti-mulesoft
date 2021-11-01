@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:sqs="http://www.mulesoft.org/schema/mule/sqs" xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:java="http://www.mulesoft.org/schema/mule/java" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/sqs http://www.mulesoft.org/schema/mule/sqs/current/mule-sqs.xsd">
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="6a026bf1-2eed-49fa-859c-f0c7d69345b3" >
+		<db:my-sql-connection host="localhost" port="3306" user="MULEUSERPRO" password="MULEUSERPRO" database="mulepro" />
+	</db:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="49b1606e-6a1f-4b07-b558-c5284066ac39" />
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="9f7e0030-ea0a-460c-bcbc-ddab03622dc5" />
+	<flow name="cons_sost_crea_pacchetti_flow" doc:id="253057ec-29f6-4091-9e44-7190b68afa47" >
+		
+		<scheduler doc:name="Scheduler" doc:id="a10dd532-f9db-4cdb-a165-e0d5565db453" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="10" timeUnit="MINUTES"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="START" doc:id="f9939a11-63dc-4022-aac4-4a0b068f450a" message="CONSERVAZIONE SOSTITUTIVA ---- START"/>
+		<java:new constructor="Utilities()" doc:id="df12185e-768c-4695-91a8-c11248eac1c3" class="com.nttdata.utils.Utilities" target="utilities" doc:name="Utilities"/>
+		<java:invoke method="deleteAllContentOfDirectory(java.lang.String)" doc:name="Delete content of working dir" doc:id="8a7792f4-af90-4ee2-82b6-eb636785f5b8" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities">
+			<java:args ><![CDATA[#[{
+	arg0: p('all006.working.dir') as String
+}]]]></java:args>
+		</java:invoke>
+		<ee:transform doc:name="Transform Message" doc:id="d29cb975-184f-424b-9a45-d66a6f9089aa" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"SELECT
+        JOB_ID        ,
+        FILENAME      ,
+        OPEC          ,
+        IMPORTO       ,
+        COD_ANNUALITA ,
+        TIPO_FIRMA    ,
+        NOMINATIVO    ,
+        P_IVA         ,
+        COD_FISC      ,
+        SHA1
+FROM
+        CONS_SOST_STAGING_AREA
+WHERE
+        SENT_TO_CONS_SOST = 'N'
+ORDER BY
+        CREATION_DATE DESC LIMIT " ++ p('cons.sost.num.doc.per.pacchetto')]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="filesCopiati" ><![CDATA[%dw 2.0
+output application/java
+---
+false]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<db:select doc:name="contracts to be sent to conservazione sostitutiva" doc:id="2c0520db-8c82-43fc-bc3f-4d7889dc1196" config-ref="Database_Config">
+			<db:sql ><![CDATA[#[payload]]]></db:sql>
+		</db:select>
+		<choice doc:name="Choice" doc:id="af659995-6ee9-4648-9d42-66e31de1c66d" >
+			<when expression="#[sizeOf(payload) &gt;= p('cons.sost.num.doc.per.pacchetto')]">
+				<logger level="INFO" doc:name="Logger" doc:id="6677c5f6-9528-467a-9a97-a09935e36527" message='#["CONSERVAZIONE SOSTITUTIVA ---- " ++ sizeOf(payload) ++ " contratti da inviare"]'/>
+				<ee:transform doc:name="Object to Json" doc:id="330c1625-7324-4b5b-8b9f-129bb78eb74a" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[&quot;'&quot; ++ (payload.JOB_ID joinBy  &quot;','&quot; as String) ++ &quot;'&quot;]" doc:name="Set lista_jobid_non_filtrata" doc:id="fcaea125-8f9d-4f7b-8980-e4048843259e" variableName="lista_jobid_non_filtrata" />
+				<ee:transform doc:name="Add FILE_EXIST field to Json" doc:id="783e13e4-5b0b-47f8-8d34-6f91192288c8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+import java!com::nttdata::utils::Utilities
+output application/json
+---
+payload map ( payload01 , indexOfPayload01 ) -> {
+	SHA1: payload01.SHA1 default "",
+	P_IVA: payload01.P_IVA,
+	INS_DATE: payload01.INS_DATE as String default "",
+	FILENAME: payload01.FILENAME default "",
+	TIPO_FIRMA: payload01.TIPO_FIRMA,
+	NOMINATIVO: payload01.NOMINATIVO,
+	JOB_ID: payload01.JOB_ID,
+	COD_ANNUALITA: payload01.COD_ANNUALITA,
+	IMPORTO: payload01.IMPORTO,
+	OPEC: payload01.OPEC,
+	COD_FISC: payload01.COD_FISC,
+	FILE_EXIST: Utilities::checkFileExist(p('all006.source.dir') as String ++ (payload01.FILENAME as String) ++ ".pdf")
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:name="Filter json by file exist" doc:id="5d51b80e-6c21-43ee-b879-37967959c9c9" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload filter($.FILE_EXIST == "SI")]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<choice doc:name="Choice" doc:id="b54ca0a2-e987-4382-ae85-38dee8f42cc2">
+					<when expression="#[sizeOf(payload) &gt; 0]">
+						<set-variable value="#[payload]" doc:name="Set backPayload" doc:id="91744298-1c8f-4ab5-a570-088df9715288" variableName="backPayload" />
+						<set-variable value="#[&quot;'&quot; ++ (payload.JOB_ID joinBy  &quot;','&quot; as String) ++ &quot;'&quot;]" doc:name="Set lista_jobId" doc:id="6daa1e35-61f3-4037-b390-271c64ff2985" variableName="lista_jobId" />
+						<ee:transform doc:name="Prepare update SENT_TO_CONS_SOST a W" doc:id="d6de4fb7-a257-48c1-82ff-ba503e0395f5">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+"UPDATE
+        CONS_SOST_STAGING_AREA 
+ SET
+        SENT_TO_CONS_SOST='W'
+ WHERE
+        JOB_ID IN (" ++ vars.lista_jobId ++ ")"]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<db:execute-script doc:name="Updating SENT_TO_CONS_SOST a W" doc:id="fb76e161-b4f0-4cc0-9120-dba431b6e3ff" config-ref="Database_Config">
+							<db:sql ><![CDATA[#[payload]]]></db:sql>
+						</db:execute-script>
+						<set-variable value='#["ABCDEFGHILM"]' doc:name="Set lottoDirFileName" doc:id="8ab19d5d-d663-4f52-b93b-e4b8fe3870fc" variableName="lottoDirFileName" />
+						<ee:transform doc:name="create XML" doc:id="df2c4049-4680-4e3e-a278-ddd7f42b8cca">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+---
+{
+  ROOT: {
+    INFO: {
+      "LOAD_DOCUMENTPATH": vars.lottoDirFileName,
+      "CUSTOMER_ID": "1",
+      "MAP_ID": "1",
+      "COURIER_NAME": vars.lottoDirFileName,
+      "SIGN_SINGLEDOC": "N"
+    },
+    DOCUMENTS @(FAMILY: "0"): {
+      (vars.backPayload map {
+        DOCUMENT @("OP_TYPE": "INPUT", "DOC_DATE": now() as String {format: "dd/MM/yyyy"}): {
+          "INDEX_FIELDS": {
+            FIELD @(NAME: "DB_TIPO_DOC", VALUE: "C"): "",
+            FIELD @(NAME: "DB_COMMISSIONE", VALUE: trim($."COD_ANNUALITA" as String) default "" replace "-" with ""): "",
+            FIELD @(NAME: "DB_OPEC", VALUE: trim($.OPEC as String) default "" replace "-" with ""): "",
+            FIELD @(NAME: "DB_IMPORTO", VALUE: trim($.IMPORTO as String) default "" replace "." with ","): "",
+            FIELD @(NAME: "DB_TIPO_FIRMA", VALUE: trim($."TIPO_FIRMA" as String) default ""): ""
+          },
+          "DOCUMENT_PAGES": {
+            PAGE @(SHA1: $.SHA1): trim($.FILENAME as String) default "" ++ ".pdf"
+          }
+        }
+      })
+    }
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						<java:invoke doc:name="Generate unique dir name" doc:id="d02152c4-d23b-4617-8af3-e25d3806fca1" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities" method="generateDirname()" target="unique_dir_name" />
+						<java:invoke doc:name="Crea Dir in Working Dir" doc:id="0df18fc3-cc0f-462e-bd32-198a253bbc12" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities" method="creaDirectory(java.lang.String)" target="directoryCreata">
+						<java:args><![CDATA[#[{
+	arg0: p('all006.working.dir') ++ vars.unique_dir_name
+}]]]></java:args>
+					</java:invoke>
+						<file:write doc:name="Write XML" doc:id="d31aadfe-c390-4426-af7c-6b1fba600120" config-ref="File_Config" path="#[p('all006.working.dir') ++ vars.unique_dir_name ++ &quot;/&quot; ++ vars.lottoDirFileName ++ &quot;.xml&quot;]"/>
+						<file:create-directory doc:name="Create directory for contracts" doc:id="d903fb5c-1cf1-4577-955c-523e2ff62bdd" config-ref="File_Config" directoryPath="#[p('all006.working.dir') ++ vars.unique_dir_name ++ &quot;/&quot; ++ vars.lottoDirFileName]"/>
+						<set-payload value="#[vars.backPayload]" doc:name="Restore backPayload" doc:id="8528d64d-2534-4008-b3d9-14c3056dad7b" />
+						<foreach doc:name="For Each" doc:id="4ebf9709-2971-4eef-925f-d5a01694e7a8">
+					<logger level="INFO" doc:name="Logger" doc:id="50e996a6-6fa0-426a-aff7-c6d11177715b" message="CONS. SOST. ---- INIZIO SPOSTAMENTO FILE #[payload.FILENAME]" />
+					<ee:transform doc:name="Transform Message" doc:id="4e3a310e-9d1f-4139-9bb5-56959ec2069f">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload
+]]></ee:set-payload>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="sourcefile"><![CDATA[%dw 2.0
+output application/java
+---
+p('all006.source.dir') ++ payload.FILENAME ++ ".pdf"]]></ee:set-variable>
+							<ee:set-variable variableName="destfile"><![CDATA[%dw 2.0
+output application/java
+---
+p('all006.working.dir') ++ vars.unique_dir_name ++ "/" ++ payload.FILENAME ++ ".pdf"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<java:invoke method="moveFile(java.lang.String,java.lang.String)" doc:name="Move File in Working Dir" doc:id="70cdc3bd-f49b-43f0-9f24-236da1ce4968" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities">
+						<java:args><![CDATA[#[{
+	arg0: p('all006.source.dir') ++ payload.FILENAME ++ ".pdf",
+	arg1: p('all006.working.dir') ++ vars.unique_dir_name ++ "/" ++ vars.lottoDirFileName ++ "/" ++ payload.FILENAME ++ ".pdf"
+}]]]></java:args>
+					</java:invoke>
+							<set-variable value="#[true]" doc:name="Set filesCopiati" doc:id="e3d0159e-911b-4c87-a348-cefef46a5397" variableName="filesCopiati"/>
+							<validation:is-true doc:id="0033d594-9f77-41d7-972f-e5fde658ed92" config-ref="Validation_Config" expression="#[payload == true]" message='#["CONS. SOST. ---- ERRORE DURANTE LO SPOSTAMENTO DEL FILE"]'/>
+							<logger level="INFO" doc:name="Logger" doc:id="3942e308-f284-40d4-aca5-78c01cd058a6" message="CONS. SOST. ---- SPOSTAMENTO DEL FILE ESEGUITO CON SUCCESSO!"/>
+				</foreach>
+						<java:new constructor="ZipTrans()" doc:name="ZipTrans" doc:id="a60ddfe7-86df-453e-a7a3-814811da1705" class="zipping.ZipTrans" target="ziptrans"/>
+						<java:invoke doc:name="Create Zip File" doc:id="e51bf02a-68d7-41e6-86e1-fd4b2654f932" instance="#[vars.ziptrans]" class="zipping.ZipTrans" method="prepareConsSostZipFile(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)">
+							<java:args ><![CDATA[#[{
+	arg0: p('all006.working.dir') ++ vars.unique_dir_name, 
+	arg1: p('all006.output.dir') ++ vars.lottoDirFileName ++ ".zip",
+	arg2: p('all006.done.dir') ++ vars.lottoDirFileName ++ ".zip",
+	arg3: p('all006.output.dir'),
+	arg4: vars.lottoDirFileName
+}]]]></java:args>
+						</java:invoke>
+						<ee:transform doc:name="Prepare Update SENT_TO_CONS_SOST a Y" doc:id="c9652d4e-da36-4f1e-9468-1c6e5137235f">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+"
+UPDATE cons_sost_staging_area 
+SET
+ SENT_TO_CONS_SOST = 'Y'
+WHERE
+  JOB_ID in (" ++ vars.lista_jobId ++ ")"]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<db:execute-script doc:name="Updating SENT_TO_CONS_SOST a Y" doc:id="2ffda509-31b4-47e1-861b-31cabf8523ee" config-ref="Database_Config">
+							<db:sql ><![CDATA[#[payload]]]></db:sql>
+						</db:execute-script>
+						<logger level="INFO" doc:name="Logger" doc:id="721bb68c-1eeb-4e60-8122-605e18152c64" message="CONS. SOST. ---- UPDATE SENT_TO_CONS_SOST A Y ESEGUITO CON SUCCESSO!"/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="578f6362-43c7-4e6c-a027-ab50c28b85c4" message='#["CONSERVARZIONE SOSTITUTIVA ---- STEP2 ---- CI SONO " ++ sizeOf(payload) ++ " CONTRATTI DA INVIARE"]'/>
+					</otherwise>
+				</choice>
+				<ee:transform doc:name="Prepare Update SENT_TO_CONS_SOST a N per i files non trovati" doc:id="9ae734f5-3464-4763-bba3-5dd4bfad95c8" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"
+UPDATE cons_sost_staging_area 
+SET
+ SENT_TO_CONS_SOST = 'N'
+WHERE
+  JOB_ID in (" ++ vars.lista_jobId ++ ") 
+AND 
+  SENT_TO_CONS_SOST <> 'Y'
+"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<db:execute-script doc:name="Updating SENT_TO_CONS_SOST a N per i files non trovati" doc:id="d681292f-4ac4-4825-968a-4df688b68dd1" config-ref="Database_Config">
+					<db:sql ><![CDATA[#[payload]]]></db:sql>
+				</db:execute-script>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="744a3a36-ee30-4cf2-bb8b-d482a80dc604" message="#[&quot;CONSERVARZIONE SOSTITUTIVA ---- CI SONO SOLO &quot; ++ sizeOf(payload) ++ &quot; CONTRATTI DA INVIARE. NUMERO MINIMO: &quot; ++ p('cons.sost.num.doc.per.pacchetto')]"/>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="END" doc:id="e5902bbf-6d5b-459b-89bf-967ac201cc65" message="CONSERVAZIONE SOSTITUTIVA ---- END"/>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="26b256da-2447-4f11-84f3-920a8b9d1fdb" >
+				<logger level="INFO" doc:name="Logger" doc:id="136f3675-204c-49cc-8c25-1a89bf6bc381" message='#["CONSERVARZIONE SOSTITUTIVA ---- ERRORE NEL FLUSSO ---- DESCRIZIONE: " ++ error.detailedDescription ++ " ----- TIPO: " ++ error.errorType.asString]'/>
+				<choice doc:name="Choice" doc:id="489ca3cb-a5ce-4ac6-b3e1-7552b0097166" >
+					<when expression='#[vars.lista_jobid_non_filtrata != null and vars.lista_jobid_non_filtrata != ""]'>
+						<ee:transform doc:name="Prepare update SENT_TO_CONS_SOST a N" doc:id="3971980c-f1d5-453b-9f91-28d1516b9f85" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"UPDATE
+        CONS_SOST_STAGING_AREA 
+ SET
+        SENT_TO_CONS_SOST='N'
+ WHERE
+        JOB_ID IN (" ++ vars.lista_jobid_non_filtrata ++ ")"]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<db:execute-script doc:name="Updating SENT_TO_CONS_SOST a N" doc:id="f380e759-a068-49c0-a731-e56693566cb1" config-ref="Database_Config">
+							<db:sql ><![CDATA[#[payload]]]></db:sql>
+						</db:execute-script>
+						<logger level="INFO" doc:name="Logger" doc:id="488bf4af-8cdb-4a13-a104-10aae1d460af" message="CONSERVAZIONE SOSTITUTIVA ---- ERRORE ---- ESEGUITO UPDATE SENT_TO_CONS_SOST A N"/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="46786789-5293-46d6-9155-13888c7fa0c9" message="CONSERVAZIONE SOSTITUTIVA ---- ERRORE ----NESSUN UPDATE DA ESEGUIRE"/>
+					</otherwise>
+				</choice>
+				<choice doc:name="Choice" doc:id="f126c8d5-4a0a-4f5e-af3e-12367ad75917" >
+					<when expression="#[vars.filesCopiati == true]">
+						<java:invoke method="copyFilesFromOneDirToAnother(java.lang.String,java.lang.String)" doc:name="Restore files in src dir" doc:id="71201a9a-6d53-4b90-8fd2-655c6f3e5072" instance="#[vars.utilities]" class="com.nttdata.utils.Utilities">
+							<java:args ><![CDATA[#[{
+	arg0: p('all006.working.dir') ++ vars.unique_dir_name ++ "/" ++ vars.lottoDirFileName,
+	arg1: p('all006.source.dir')
+}]]]></java:args>
+						</java:invoke>
+						<logger level="INFO" doc:name="Logger" doc:id="2a756534-d06f-410d-b3c9-8cf4a8f06d9f" message='#["Files ripristinati nella src dir. Esito: " ++ payload==true]'/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="d86bd623-cc3a-4bb9-ac70-d83fac48587f" message="Non ci sono file da rimettere nella src dir"/>
+					</otherwise>
+				</choice>
+				<logger level="INFO" doc:name="Logger" doc:id="13e8ab03-1ff4-4a2e-aa50-f9cfc6ddfea2" message="CONSERVAZIONE SOSTITUTIVA ---- ERRORE ---- FINE GESTIONE ERRORE"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>

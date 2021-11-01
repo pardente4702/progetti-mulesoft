@@ -1,0 +1,26 @@
+[
+  {
+    "SHA1": "AAAAAAAAAAAA",
+    "P_IVA": "",
+    "FILENAME": "prova2.pdf",
+    "TIPO_FIRMA": "FEA",
+    "NOMINATIVO": "",
+    "JOB_ID": "12344",
+    "COD_ANNUALITA": "B12345678-0",
+    "IMPORTO": "123.45",
+    "OPEC": "h4356b",
+    "COD_FISC": ""
+  },
+  {
+    "SHA1": "AAAAAAAAAAAA",
+    "P_IVA": "",
+    "FILENAME": "prova.pdf",
+    "TIPO_FIRMA": "FEA",
+    "NOMINATIVO": "",
+    "JOB_ID": "12345",
+    "COD_ANNUALITA": "B12345678-0",
+    "IMPORTO": "123.45",
+    "OPEC": "h4356b",
+    "COD_FISC": ""
+  }
+]
